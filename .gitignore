@@ -103,4 +103,8 @@ bin
 
 !vendor/**/zz_generated.*
 
+.work
+.cache
+_output
 
+build
