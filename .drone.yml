@@ -1,0 +1,105 @@
+---
+kind: pipeline
+name: default
+
+clone:
+  disable: true
+
+workspace:
+  base: /workspace
+  path: src/github.com/bitpoke/k8s-application-manager
+
+steps:
+- name: git
+  image: plugins/git
+  settings:
+    depth: 0
+    tags: true
+
+- name: install dependencies
+  image: docker.io/bitpoke/build:v0.8.1
+  commands:
+  - make -j4 build.tools
+
+# - name: verify generated code
+#   image: docker.io/bitpoke/build:v0.8.1
+#   commands:
+#   - make -j4 generate
+#   - git diff --exit-code
+
+# - name: lint
+#   image: docker.io/bitpoke/build:v0.8.1
+#   commands:
+#   - make -j4 lint
+
+# - name: test
+#   image: docker.io/bitpoke/build:v0.8.1
+#   environment:
+#     ACK_GINKGO_DEPRECATIONS: "1.16.4"
+#   commands:
+#   - make test
+
+- name: build
+  image: docker.io/bitpoke/build:v0.8.1
+  commands:
+  - make -j4 build
+
+services:
+- name: docker
+  image: docker:20.10.8-dind-rootless
+  environment:
+    DOCKER_TLS_CERTDIR: ""
+
+trigger:
+  ref:
+    - refs/pull/**
+    - refs/heads/master
+    - refs/heads/release-*
+    # CI related changes SHOULD be prefixed with drone-
+    - refs/heads/drone-*
+
+---
+kind: pipeline
+name: publish
+
+trigger:
+  ref:
+    - refs/tags/**
+
+clone:
+  disable: true
+
+workspace:
+  base: /workspace
+  path: src/github.com/bitpoke/k8s-application-manager
+
+steps:
+- name: git
+  image: plugins/git
+  settings:
+    depth: 0
+    tags: true
+
+- name: build
+  image: docker.io/bitpoke/build:v0.8.1
+  commands:
+  - make -j4 build
+
+- name: publish
+  image: docker.io/bitpoke/build:v0.8.1
+  environment:
+    DOCKER_USERNAME: bitpokebot
+    DOCKER_PASSWORD:
+      from_secret: DOCKER_PASSWORD
+    SSH_KEY:
+      from_secret: SSH_KEY
+  commands:
+  - /usr/local/bin/setup-credentials-helper.sh
+  - ssh-keyscan -H github.com > /etc/ssh/ssh_known_hosts
+  - make publish
+
+services:
+- name: docker
+  image: docker:20.10.8-dind-rootless
+  environment:
+    DOCKER_TLS_CERTDIR: ""
